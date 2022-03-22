@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use log::{info, warn};
+use log::{debug, info, warn};
 
 use crate::flightaware::{FlightAware, FlightPlan};
 use crate::flightradar::FlightRadar;
@@ -75,7 +75,7 @@ impl Tracker {
 
         // Only update airliners
         if data.ac_data.is_airline() {
-            info!("Requesting flight plan for {}", data.ac_data.callsign);
+            debug!("Requesting flight plan for {}", data.ac_data.callsign);
 
             self.faware.request_flightplan(id, &data.ac_data.callsign);
         }
@@ -204,9 +204,9 @@ impl Tracker {
             match result {
                 Ok(fp) => {
                     self.update_flightplan(&fp.id, fp.fp);
-                    info!("Received flight plan for {}", fp.callsign);
+                    debug!("Received flight plan for {}", fp.callsign);
                 }
-                Err(e) => info!("Could not receive flight plan because {:?}", e),
+                Err(e) => warn!("Could not receive flight plan because {:?}", e),
             }
         }
     }

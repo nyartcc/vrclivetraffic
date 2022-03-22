@@ -1,8 +1,10 @@
 {
-  "airport": "KBOS",
-  "range": 30,
+  "airport": "KEWR",
+  "range": 50,
   "delay": 6,
-  "floor": 0,
-  "ceiling": 99999,
-  "use_flightaware": true
+  "floor": 200,
+  "ceiling": 17000,
+  "use_flightaware": true,
+  "origin_airports": ["EWR"],
+  "destination_airports": ["EWR", "TEB"]
 }

@@ -14,7 +14,7 @@ mod util;
 use airports::Airports;
 use flightaware::FlightPlan;
 use fsdparser::{ClientQueryPayload, PacketTypes, Parser};
-use log::{info, LevelFilter};
+use log::{debug, info, LevelFilter};
 use retain_mut::RetainMut;
 use serde::{Deserialize, Serialize};
 use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
@@ -164,6 +164,8 @@ struct ConfigData {
     floor: i32,
     ceiling: i32,
     use_flightaware: bool,
+    origin_airports: Vec<String>,
+    destination_airports: Vec<String>
 }
 
 impl Default for ConfigData {
@@ -175,6 +177,8 @@ impl Default for ConfigData {
             floor: 0,
             ceiling: 99999,
             use_flightaware: true,
+            destination_airports: Vec::new(),
+            origin_airports: Vec::new()
         }
     }
 }
@@ -281,6 +285,7 @@ fn main() {
         let mut current_atc_callsign = String::new();
         let mut did_init = false;
         let mut timer: Option<Instant> = None;
+        let mut atc_timer: Option<Instant> = None;
         let buffer_timer = Instant::now();
 
         'main: loop {
@@ -296,6 +301,8 @@ fn main() {
                     stream,
                     callsign: String::new(),
                 });
+
+
 
                 // First stream
                 if !did_init {
@@ -318,13 +325,30 @@ fn main() {
             // Process aircraft
             tracker.step();
 
+            // let should_heartbeat_controllers =
+            //     atc_timer.is_none() || atc_timer.unwrap().elapsed().as_secs_f32() >= 15.0;
+            //
+            // if should_heartbeat_controllers {
+            //     atc_timer = Some(Instant::now());
+            //     write_str(
+            //         &mut streams,
+            //         "%LGA_APP:20800:5:10:4:40.68955:-74.17446:0",
+            //     );
+            // }
+
             let should_update_position =
-                timer.is_none() || timer.unwrap().elapsed().as_secs_f32() >= 5.0;
+                timer.is_none() || timer.unwrap().elapsed().as_secs_f32() >= 2.5;
 
             let ac_data = tracker.get_aircraft_data();
             let aircraft_count = ac_data.len();
             for aircraft in ac_data {
                 // Insert aircraft as "injected" if not already in
+
+                if !config.destination_airports.contains(&aircraft.ac_data.destination) &&
+                    !config.origin_airports.contains(&aircraft.ac_data.origin ){
+                    continue;
+                }
+
                 let tracked: &mut TrackedData = match injected_tracker.entry(aircraft.id.clone()) {
                     Entry::Occupied(o) => o.into_mut(),
                     Entry::Vacant(v) => v.insert(TrackedData::default()),
@@ -332,7 +356,7 @@ fn main() {
                 // Update position either in place or interpolated
                 if should_update_position {
                     let should_interpolate = !aircraft.ac_data.is_on_ground
-                        && aircraft.at_last_position_update.elapsed().as_secs() < 20;
+                        && aircraft.at_last_position_update.elapsed().as_secs() < 10;
 
                     write_str(
                         &mut streams,
@@ -374,7 +398,7 @@ fn main() {
                         );
                     }
                 } else {
-                    info!("Updating aircraft: {} shown.", aircraft_count);
+                    debug!("Updating aircraft: {} shown.", aircraft_count);
                 }
             }
 
@@ -403,7 +427,12 @@ fn main() {
                             None => continue,
                         };
 
+                        //info!("Packet Received: {:?}", packet);
+
                         match packet {
+                            PacketTypes::TransferControl(request) => {
+                                info!("Received Transfer Control Message: {} {:?}", request.target, request.transfer_type)
+                            }
                             PacketTypes::Metar(metar) => {
                                 if metar.is_response {
                                     continue;
@@ -468,6 +497,18 @@ fn main() {
                                             )
                                             .ok();
                                     }
+                                }
+                                ClientQueryPayload::WhoHas(callsign) => {
+                                    //let message = format!("#PCEWR_APP:{}:CCP:IH:{}\r\n",cq.from, callsign);
+                                    // stream
+                                    //     .write(
+                                    //         message.as_bytes()
+                                    //     ).ok();
+                                    //info!("Client Query: Who Has: {}", callsign);
+                                    // info!("Response: {}", message);
+                                }
+                                ClientQueryPayload::InitiateTrack(callsign) => {
+                                    info!("Client Query: Initiate Track on {}", callsign);
                                 }
                                 ClientQueryPayload::IsValidATCQuery(target) => {
                                     // Recognize callsign as a valid controller
